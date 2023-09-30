@@ -10,18 +10,46 @@ import threading
 openai.api_key = os.getenv("OPENAI_API_KEY")
 
 from whisper_mic.whisper_mic import WhisperMic
+import requests
+from pydub import AudioSegment
+from pydub.playback import play
+import io
 
 def call_gpt3_5(text):
-    # Replace this with your actual GPT-3.5 call
     response = openai.ChatCompletion.create(
       model="gpt-3.5-turbo",
       messages=[
-            {"role": "system", "content": "Translate this into Chinese"},
+            {"role": "system", "content": "rewrite this like a pirate"},
             {"role": "user", "content": text},
         ]
     )
+    gpt_response = response['choices'][0]['message']['content']
     print("GPT-3.5 response: ")
-    print(response['choices'][0]['message']['content'])
+    print(gpt_response)
+
+    # Speak the response using ElevenLabs
+    voice_id = "21m00Tcm4TlvDq8ikWAM"  # Replace with your chosen voice ID
+    url = f"https://api.elevenlabs.io/v1/text-to-speech/{voice_id}"
+    headers = {"xi-api-key": os.getenv("ELEVENLABS_API_KEY")}
+    data = {
+        "text": gpt_response,
+        "model_id": "eleven_monolingual_v1",
+        "voice_settings": {
+            "stability": 0,
+            "similarity_boost": 0,
+            "style": 0,
+            "use_speaker_boost": True
+        }
+    }
+    response = requests.post(url, headers=headers, json=data)
+    
+    if response.status_code == 200:
+        # Load audio from the response content
+        audio = AudioSegment.from_file(io.BytesIO(response.content), format="mp3")
+        # Play the audio
+        # play(audio)
+    else:
+        print("Failed to generate speech:", response.text)
 
 class MyWhisperMic(WhisperMic):
     def listen_loop(self, dictate: bool = False):
@@ -32,10 +60,32 @@ class MyWhisperMic(WhisperMic):
             results.append(result)
             if dictate:
                 self.keyboard.type(result)
+            if "let's play the story game" in result.lower():
+                self.story_game()
             else:
                 print(result)
             threading.Thread(target=call_gpt3_5, args=(result,)).start()
         return results
+    
+    def story_game(self):
+        print("Starting the story game...")
+        story = [
+            {"role": "system", "content": "You are playing the story game. You should continue the story with one sentence after the user every time. "},
+        ]
+        while True:
+            # User's turn
+            result = self.result_queue.get()
+            story.append({"role": "user", "content": result})
+            print("User: " + result)
+
+            # Model's turn
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=story
+            )
+            model_result = response['choices'][0]['message']['content']
+            story.append({"role": "assistant", "content": model_result})
+            print("Model: " + model_result)
 
 @click.command()
 @click.option("--model", default="base", help="Model to use", type=click.Choice(["tiny","base", "small","medium","large","large-v2"]))
