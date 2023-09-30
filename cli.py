@@ -70,11 +70,14 @@ class MyWhisperMic(WhisperMic):
     def story_game(self):
         print("Starting the story game...")
         story = [
-            {"role": "system", "content": "You are playing the story game. You should continue the story with one sentence after the user every time. "},
+            {"role": "system", "content": "You are playing the story game. You should continue the story with one sentence after the user every time."},
         ]
         while True:
             # User's turn
             result = self.result_queue.get()
+            if "let's stop the story game" in result.lower():
+                print("Stopping the story game...")
+                break
             story.append({"role": "user", "content": result})
             print("User: " + result)
 
