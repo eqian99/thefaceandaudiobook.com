@@ -82,58 +82,62 @@ def call_elevenlabs(text):
         print("Failed to generate speech:", response.text)
         return 0
 
-def story_game(result_queue):
-    print("Starting the story game...")
-    story = [
-        {"role": "system", "content": """You are play a game with the user, where you both take turns adding to a story. The user will start. Every sentence will be added to the story, so make sure you only say things that continue the story. """},
-    ]
-    while True:
-        # User's turn
-        result = result_queue.get()
-        if "let's stop the story game" in result.lower():
-            print("Stopping the story game...")
-            break
-        story.append({"role": "user", "content": result})
-        print("User: " + result)
+def story_game(result_queue, call_elevenlabs):
+    def run_game():
+        print("Starting the story game...")
+        story = [
+            {"role": "system", "content": """You are play a game with the user, 
+            where you both take turns adding to a story. The user will start. 
+            Every sentence will be added to the story, so make sure you only say 
+            things that continue the story. Only reply one short sentence. """},
+        ]
+        while True:
+            # User's turn
+            print(f"Queue size before get: {result_queue.qsize()}")  # Debugging output
+            result = result_queue.get()
+            print(f"Queue size after get: {result_queue.qsize()}") 
+            print(f"listen_loop received: {result}")
+            if "let's stop the story game" in result.lower():
+                print("Stopping the story game...")
+                break
+            story.append({"role": "user", "content": result})
+            print("User: " + result)
 
-        # Model's turn
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=story
-        )
-        model_result = response['choices'][0]['message']['content']
-        story.append({"role": "assistant", "content": model_result})
-        print("Model: " + model_result)
-        # Call ElevenLabs and wait for it to finish speaking
-        duration = call_elevenlabs(model_result)
-        time.sleep(duration)
+            # Model's turn
+            response = openai.ChatCompletion.create(
+                model="gpt-3.5-turbo",
+                messages=story
+            )
+            model_result = response['choices'][0]['message']['content']
+            story.append({"role": "assistant", "content": model_result})
+            print("Model: " + model_result)
+            # Call ElevenLabs and wait for it to finish speaking
+            duration = call_elevenlabs(model_result)
+            time.sleep(duration)
+
+    threading.Thread(target=run_game).start()
 
 class MyWhisperMic(WhisperMic):
-
-    def listen_loop(self, dictate: bool = False):
+    def listen_loop(self, dictate: bool = False) -> None:
         threading.Thread(target=self.transcribe_forever).start()
-        results = []
         while True:
             result = self.result_queue.get()
-            results.append(result)
-            if dictate:
+            print(f"listen_loop received: {result}")
+            if "let's play the story game" in result.lower():
+                story_game(self.result_queue, call_elevenlabs)
+            elif dictate:
                 self.keyboard.type(result)
             else:
                 print(result)
-            if "let's play the story game" in result.lower():
-                story_game(self.result_queue)
-            else:
-                threading.Thread(target=call_gpt3_5, args=(result,)).start()
-        return results
 
 @click.command()
 @click.option("--model", default="base", help="Model to use", type=click.Choice(["tiny","base", "small","medium","large","large-v2"]))
 @click.option("--device", default=("cuda" if torch.cuda.is_available() else "cpu"), help="Device to use", type=click.Choice(["cpu","cuda","mps"]))
 @click.option("--english", default=False, help="Whether to use English model",is_flag=True, type=bool)
 @click.option("--verbose", default=False, help="Whether to print verbose output", is_flag=True,type=bool)
-@click.option("--energy", default=1000, help="Energy level for mic to detect", type=int)
+@click.option("--energy", default=800, help="Energy level for mic to detect", type=int)
 @click.option("--dynamic_energy", default=False,is_flag=True, help="Flag to enable dynamic energy", type=bool)
-@click.option("--pause", default=0.8, help="Pause time before entry ends", type=float)
+@click.option("--pause", default=1, help="Pause time before entry ends", type=float)
 @click.option("--save_file",default=False, help="Flag to save file", is_flag=True,type=bool)
 @click.option("--loop", default=False, help="Flag to loop", is_flag=True,type=bool)
 @click.option("--dictate", default=False, help="Flag to dictate (implies loop)", is_flag=True,type=bool)
