@@ -109,6 +109,7 @@ def story_game(result_queue):
         time.sleep(duration)
 
 class MyWhisperMic(WhisperMic):
+
     def listen_loop(self, dictate: bool = False):
         threading.Thread(target=self.transcribe_forever).start()
         results = []
