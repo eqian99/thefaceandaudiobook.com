@@ -22,8 +22,11 @@ import queue
 
 queue_lock = threading.Lock()
 game_queue = queue.Queue()  # Define a separate queue for the game
+password = 'facebook'
+
 
 def face_and_em_detection():
+    print('Running face and emotion detection...')
     ## Image detection
     copy_images()
     face_path = get_latest_image(directory="img/")
@@ -185,7 +188,11 @@ def main(model: str, english: bool, verbose: bool, energy:  int, pause: float, d
     mic = MyWhisperMic(game_queue, model=model, english=english, verbose=verbose, 
                        energy=energy, pause=pause, dynamic_energy=dynamic_energy,
                        save_file=save_file, device=device, mic_index=mic_index)    
-    threading.Thread(target=run_face_and_em_detection).start()
+    face_thread = threading.Thread(target=run_face_and_em_detection)
+    face_thread.start()
+
+    listen_thread = threading.Thread(target=mic.listen_loop, args=(dictate,))
+    listen_thread.start()
     if not loop:
         result = mic.listen()
         print("You said: " + result)
