@@ -15,6 +15,11 @@ from pydub import AudioSegment
 from pydub.playback import play
 import io
 import time
+import queue
+
+queue_lock = threading.Lock()
+game_queue = queue.Queue()  # Define a separate queue for the game
+
 
 
 def call_gpt3_5(text):
@@ -82,7 +87,7 @@ def call_elevenlabs(text):
         print("Failed to generate speech:", response.text)
         return 0
 
-def story_game(result_queue, call_elevenlabs):
+def story_game(game_queue, call_elevenlabs):
     def run_game():
         print("Starting the story game...")
         story = [
@@ -92,39 +97,47 @@ def story_game(result_queue, call_elevenlabs):
             things that continue the story. Only reply one short sentence. """},
         ]
         while True:
-            # User's turn
-            print(f"Queue size before get: {result_queue.qsize()}")  # Debugging output
-            result = result_queue.get()
-            print(f"Queue size after get: {result_queue.qsize()}") 
-            print(f"listen_loop received: {result}")
-            if "let's stop the story game" in result.lower():
-                print("Stopping the story game...")
-                break
-            story.append({"role": "user", "content": result})
-            print("User: " + result)
+            with queue_lock:  # Use with statement for acquiring and releasing the lock
+                print(f"Queue size before get: {game_queue.qsize()}")  
+                result = game_queue.get()  # Use game_queue instead of result_queue
+                print(f"Queue size after get: {game_queue.qsize()}")
+                print(f"storyloop listen_loop received: {result}")
+                if "let's stop the story game" in result.lower():
+                    print("Stopping the story game...")
+                    break
+                story.append({"role": "user", "content": result})
+                print("User: " + result)
 
-            # Model's turn
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=story
-            )
-            model_result = response['choices'][0]['message']['content']
-            story.append({"role": "assistant", "content": model_result})
-            print("Model: " + model_result)
-            # Call ElevenLabs and wait for it to finish speaking
-            duration = call_elevenlabs(model_result)
-            time.sleep(duration)
+                # Model's turn
+                response = openai.ChatCompletion.create(
+                    model="gpt-3.5-turbo",
+                    messages=story
+                )
+                model_result = response['choices'][0]['message']['content']
+                story.append({"role": "assistant", "content": model_result})
+                print("Model: " + model_result)
+                # Call ElevenLabs and wait for it to finish speaking
+                duration = call_elevenlabs(model_result)
+                time.sleep(duration)
 
     threading.Thread(target=run_game).start()
 
 class MyWhisperMic(WhisperMic):
+
+    def __init__(self, game_queue, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.game_queue = game_queue  # Store a reference to the game_queue
+    
     def listen_loop(self, dictate: bool = False) -> None:
         threading.Thread(target=self.transcribe_forever).start()
         while True:
+            self.game_queue = self.result_queue  # Set game_queue to result_queue
             result = self.result_queue.get()
+            #with queue_lock:  # Use with statement for acquiring and releasing the lock
             print(f"listen_loop received: {result}")
-            if "let's play the story game" in result.lower():
-                story_game(self.result_queue, call_elevenlabs)
+            if "story game" in result.lower():
+                print("Starting the story game...")
+                story_game(self.game_queue, call_elevenlabs)  # Pass game_queue to story_game
             elif dictate:
                 self.keyboard.type(result)
             else:
@@ -148,7 +161,9 @@ def main(model: str, english: bool, verbose: bool, energy:  int, pause: float, d
     if list_devices:
         print("Possible devices: ",sr.Microphone.list_microphone_names())
         return
-    mic = MyWhisperMic(model=model, english=english, verbose=verbose, energy=energy, pause=pause, dynamic_energy=dynamic_energy, save_file=save_file, device=device,mic_index=mic_index)
+    mic = MyWhisperMic(game_queue, model=model, english=english, verbose=verbose, 
+                       energy=energy, pause=pause, dynamic_energy=dynamic_energy,
+                       save_file=save_file, device=device, mic_index=mic_index)    
     if not loop:
         result = mic.listen()
         print("You said: " + result)
