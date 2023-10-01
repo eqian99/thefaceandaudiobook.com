@@ -20,7 +20,14 @@ import queue
 queue_lock = threading.Lock()
 game_queue = queue.Queue()  # Define a separate queue for the game
 
-
+def run_face_and_em_detection():
+    while True:
+        name, emotion = face_and_em_detection()
+        if name and emotion:
+            # Call ElevenLabs and wait for it to finish speaking
+            text = f"{name} is feeling {emotion}"
+            duration = call_elevenlabs(text)
+            time.sleep(duration)
 
 def call_gpt3_5(text):
     response = openai.ChatCompletion.create(
@@ -164,12 +171,14 @@ def main(model: str, english: bool, verbose: bool, energy:  int, pause: float, d
     mic = MyWhisperMic(game_queue, model=model, english=english, verbose=verbose, 
                        energy=energy, pause=pause, dynamic_energy=dynamic_energy,
                        save_file=save_file, device=device, mic_index=mic_index)    
+    threading.Thread(target=run_face_and_em_detection).start()
     if not loop:
         result = mic.listen()
         print("You said: " + result)
     else:
         results = mic.listen_loop(dictate=dictate)
         print("Results: ", results)
+    
 
 if __name__ == "__main__":
     main()
