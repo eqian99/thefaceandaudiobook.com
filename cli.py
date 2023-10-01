@@ -131,7 +131,7 @@ class MyWhisperMic(WhisperMic):
     def listen_loop(self, dictate: bool = False) -> None:
         threading.Thread(target=self.transcribe_forever).start()
         while True:
-            self.game_queue = self.result_queue  # Set game_queue to result_queue
+            self.game_queue = self.result_queue
             result = self.result_queue.get()
             #with queue_lock:  # Use with statement for acquiring and releasing the lock
             print(f"listen_loop received: {result}")
