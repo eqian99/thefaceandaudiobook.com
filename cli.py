@@ -3,6 +3,9 @@
 import click
 import torch
 import speech_recognition as sr
+from utils.find_pi_zero_share_names import *
+from face_emotion_recog_hugging import *
+from face_detection import detect_face
 from typing import Optional
 import openai 
 import os 
@@ -19,6 +22,17 @@ import queue
 
 queue_lock = threading.Lock()
 game_queue = queue.Queue()  # Define a separate queue for the game
+
+def face_and_em_detection():
+    ## Image detection
+    copy_images()
+    face_path = get_latest_image(directory="img/")
+    ## Pass img handles
+    name = detect_face(face_path)
+    emotion = get_emotion_from_image(face_path)
+    
+    print(name, emotion)
+    return name, emotion
 
 def run_face_and_em_detection():
     while True:
